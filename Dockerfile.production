@@ -1,0 +1,16 @@
+######################################################################
+#  Use this Dockerfile to build a standalone image with your actions #
+######################################################################
+
+ARG RASA_SDK_IMAGE
+FROM ${RASA_SDK_IMAGE}
+
+USER root
+
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+USER 1001
+
+COPY . /app/actions/
+CMD ["start", "--actions", "actions"]
