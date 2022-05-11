@@ -22,6 +22,8 @@ AURORA_API_KEY=api_key_123
 AURORA_API_CLIENT_ID=client_id_xyz
 ```
 
+For build args find out a good version of rasa-sdk from Dockerhub
+
 ## Building
 For local environment
 ```
