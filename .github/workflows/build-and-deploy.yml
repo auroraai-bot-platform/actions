@@ -10,6 +10,8 @@ on:
 
 env:
   ECR_REPOSITORY: actions-private
+  ECR_REPOSITORY_TESTBOT: demo-actions-testbot
+  ECR_REPOSITORY_PALMU: demo-actions-palmu
   RASA_SDK_IMAGE: rasa/rasa-sdk:2.8.3
   # The commit SHA that triggered the workflow run
   IMAGE_TAG: ${{ github.sha }}
@@ -40,7 +42,13 @@ jobs:
       run: |
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f Dockerfile.production --build-arg RASA_SDK_IMAGE=$RASA_SDK_IMAGE .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_TESTBOT:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY_TESTBOT:$IMAGE_TAG
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_PALMU:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY_PALMU:$IMAGE_TAG
         echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+        echo "::set-output name=imagetestbot::$ECR_REGISTRY/$ECR_REPOSITORY_TESTBOT:$IMAGE_TAG"
+        echo "::set-output name=imagepalmu::$ECR_REGISTRY/$ECR_REPOSITORY_PALMU:$IMAGE_TAG"
 
     - name: Tag ECR image with latest as well
       run: |
@@ -62,7 +70,7 @@ jobs:
       with:
         task-definition: task-definition.json
         container-name: actions-testbot
-        image: ${{ steps.build-image.outputs.image }}
+        image: ${{ steps.build-image.outputs.imagetestbot }}
 
     - name: Deploy Amazon ECS task definition
       uses: aws-actions/amazon-ecs-deploy-task-definition@v1
@@ -82,7 +90,7 @@ jobs:
       with:
         task-definition: task-definition.json
         container-name: actions-palmu
-        image: ${{ steps.build-image.outputs.image }}
+        image: ${{ steps.build-image.outputs.imagepalmu }}
 
     - name: Deploy Amazon ECS task definition
       uses: aws-actions/amazon-ecs-deploy-task-definition@v1
