@@ -1,4 +1,4 @@
-name: Build and deploy botfront docker image to AWS ECR and to demo ECS
+name: Build and deploy actions image to AWS ECR and to demo ECS
 
 # Only build on merge/push to main
 on:
@@ -10,6 +10,7 @@ on:
 
 env:
   ECR_REPOSITORY: actions-private
+  RASA_SDK_IMAGE: rasa/rasa-sdk:2.8.3
   # The commit SHA that triggered the workflow run
   IMAGE_TAG: ${{ github.sha }}
 
@@ -37,7 +38,7 @@ jobs:
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
       run: |
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f Dockerfile.production .
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f Dockerfile.production --build-arg RASA_SDK_IMAGE=$RASA_SDK_IMAGE .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
