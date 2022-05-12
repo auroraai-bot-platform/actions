@@ -422,8 +422,10 @@ class ServiceDemo(Action, ValidateSlots):
             toimiala = 'kauneudenhoito'
 
         try:
-            kunta = tracker.get_slot('kunta').lower().capitalize()
-            code = MUNICIPALITY_CODES[kunta]
+            kunta = str(tracker.get_slot('kunta')).lower().capitalize()
+            value_list = list(MUNICIPALITY_CODES.values())
+            key_list = list(MUNICIPALITY_CODES.keys())
+            code = key_list[value_list.index(kunta)]
         except:
             code = '297'
 
@@ -439,7 +441,7 @@ class ServiceDemo(Action, ValidateSlots):
         }
 
         # Enable if you want to display actual parameters sent to api!
-        # dispatcher.utter_message(f'hakuparametrit: {str(params)}')
+        dispatcher.utter_message(f'hakuparametrit: {str(params)}')
 
         try:
             api = ServiceRecommenderAPI()
