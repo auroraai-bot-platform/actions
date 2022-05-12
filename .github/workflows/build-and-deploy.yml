@@ -1,0 +1,92 @@
+name: Build and deploy botfront docker image to AWS ECR and to demo ECS
+
+# Only build on merge/push to main
+on:
+  push:
+    branches:
+    - main
+    tags:
+    - '*'
+
+env:
+  ECR_REPOSITORY: actions-private
+  # The commit SHA that triggered the workflow run
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  deploy:
+    name: Build and push docker image
+    runs-on: ubuntu-latest
+    steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: eu-north-1
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+    
+    - name: Checkout code
+      uses: actions/checkout@v2
+    
+    - name: Build, tag, and push image to Amazon ECR
+      id: build-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f Dockerfile.production .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+    - name: Tag ECR image with latest as well
+      run: |
+        MANIFEST=$(aws ecr batch-get-image --repository-name $ECR_REPOSITORY --image-ids imageTag=$IMAGE_TAG --output json | jq --raw-output --join-output '.images[0].imageManifest')
+        aws ecr put-image --repository-name $ECR_REPOSITORY --image-tag latest --image-manifest "$MANIFEST"
+    
+    - name: Fill systems manager parameter with latest version id
+      run: aws ssm put-parameter --name actions-image-tag-latest --type String --value $IMAGE_TAG --overwrite
+
+# TODO: Create predictive naming on task definition name
+# TODO: Fix IAM user / role in tandem with this fix
+    - name: Download current task definition
+      run: |
+        aws ecs describe-task-definition --task-definition demorasastackdemoecsrasataskdefinitionactionstestbot0600DAF2 --query taskDefinition > task-definition.json
+
+    - name: Fill in the new image ID in the Amazon ECS task definition
+      id: task-def
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: task-definition.json
+        container-name: actions-testbot
+        image: ${{ steps.build-image.outputs.image }}
+
+    - name: Deploy Amazon ECS task definition
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with:
+        task-definition: ${{ steps.task-def.outputs.task-definition }}
+        service: demo-service-actions-testbot
+        cluster: demo-cluster
+        wait-for-service-stability: false
+
+    - name: Download current task definition
+      run: |
+        aws ecs describe-task-definition --task-definition demorasastackdemoecsrasataskdefinitionactionspalmu8358361D --query taskDefinition > task-definition.json
+
+    - name: Fill in the new image ID in the Amazon ECS task definition
+      id: task-def-2
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: task-definition.json
+        container-name: actions-palmu
+        image: ${{ steps.build-image.outputs.image }}
+
+    - name: Deploy Amazon ECS task definition
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with:
+        task-definition: ${{ steps.task-def-2.outputs.task-definition }}
+        service: demo-service-actions-palmu
+        cluster: demo-cluster
+        wait-for-service-stability: false
