@@ -1,10 +1,10 @@
 from rasa_sdk import Action, Tracker
 from rasa_sdk.executor import CollectingDispatcher
 from rasa_sdk.events import SlotSet, AllSlotsReset, Restarted
-from .api import ServiceRecommenderAPI
+from actions.servicerec.api import ServiceRecommenderAPI
 import json
-from .utils import MUNICIPALITY_CODES, REGION_CODES, HOSPITAL_DISTRICT_CODES, SERVICE_CLASS_CODES
-from .utils import CodeFilter
+from actions.utils import MUNICIPALITY_CODES, REGION_CODES, HOSPITAL_DISTRICT_CODES, SERVICE_CLASS_CODES
+from actions.utils import CodeFilter
 
 RESULT_LIMIT_SLOT = 'sr_param_result_limit'
 DEFAULT_RESULT_LIMIT = 5

@@ -1,5 +1,5 @@
 import unittest
-from api import ServiceRecommenderAPI
+from servicerec.api import ServiceRecommenderAPI
 
 class TestApi(unittest.TestCase):
 
