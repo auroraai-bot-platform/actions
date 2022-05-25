@@ -6,6 +6,12 @@ import json
 from actions.utils import MUNICIPALITY_CODES, REGION_CODES, HOSPITAL_DISTRICT_CODES, SERVICE_CLASS_CODES
 from actions.utils import CodeFilter
 
+WHITELIST_SLOT = 'sr_whitelist'
+BLACKLIST_SLOT = 'sr_blacklist'
+
+SEARCH_TEXT_SLOT = 'sr_param_search_text'
+DEFAULT_SEARCH_TEXT_VALUE = 'palvelu'
+
 RESULT_LIMIT_SLOT = 'sr_param_result_limit'
 DEFAULT_RESULT_LIMIT = 5
 
@@ -128,9 +134,7 @@ class ApiParams:
     def __init__(self):
         self.session_id = DEFAULT_SESSION_ID
 
-        self.params = {
-            'session_id': self.session_id
-        }
+        self.params = {}
 
     def add_params(self, **kwargs):
         """ Updates api parameters """
@@ -171,6 +175,16 @@ class ValidateSlots:
         except:
             limit = DEFAULT_RESULT_LIMIT
         return limit
+
+    def validate_search_text(self, tracker):
+        """
+        Will check if search text slot has a value. Otherwise default value is used.
+        """
+        try:
+            search_text = str(tracker.get_slot(SEARCH_TEXT_SLOT))
+        except:
+            search_text = DEFAULT_SEARCH_TEXT_VALUE
+        return search_text
 
     def validate_feat(self, tracker):
         """ Creates life situation feature vector by trying to fetch all slots
@@ -248,6 +262,39 @@ class ValidateSlots:
 
         return api_filters.filters
 
+class WhiteBlackList:
+  def __init__(self, services: dict):
+    self.services = services
+
+  @staticmethod
+  def sort_by_weight(elem):
+    return elem[3]
+
+  def resort_by_match(self, white: str, black: str):
+    weighted_services = []
+    ids = [service['service_id'] for service in self.services['recommended_services']]
+    names = [service['service_name'] for service in self.services['recommended_services']]
+    descriptions = [service['service_description'] for service in self.services['recommended_services']]
+
+    for sid, name, desc in zip(ids, names, descriptions):
+        if white in desc:
+            weighted_services.append((sid, name, desc, 1))
+        else:
+            if black in desc:
+                weighted_services.append((sid, name, desc, 1000))
+            else:
+                weighted_services.append((sid, name, desc, 2))
+
+    weighted_services.sort(key=self.sort_by_weight)
+    new_services = {'recommended_services': []}
+    for x in weighted_services:
+        new_services['recommended_services'].append({'service_id': x[0],
+                                                     'service_name': x[1],
+                                                     'service_description': x[2],
+                                                     'weight': x[3]})
+
+    return new_services
+
 class ActionShowInfo(Action):
     """
     Prints out info user has chosen from carousel.
@@ -323,7 +370,7 @@ class ActionShowInfo(Action):
 
         return []
 
-class ShowServices(Action, ValidateSlots):
+class ServiceListByLifeSituation(Action, ValidateSlots):
     """
     Get service recommendations based on slot values collected by the bot.
     Tracker store slots must follow naming convention determined in
@@ -331,7 +378,7 @@ class ShowServices(Action, ValidateSlots):
     """
 
     def name(self):
-        return 'action_show_services'
+        return 'action_service_list_by_life_situation'
 
     def run(self, dispatcher, tracker, domain):
         """
@@ -347,7 +394,19 @@ class ShowServices(Action, ValidateSlots):
                               service_filters=self.validate_filters(tracker))
 
         # Enable if you want to display actual parameters sent to api!
-        # dispatcher.utter_message(f'hakuparametrit: {str(json.dumps(api_params.params))}')
+        try:
+            whitelist_text = tracker.get_slot(WHITELIST_SLOT)
+            blacklist_text = tracker.get_slot(BLACKLIST_SLOT)
+        except:
+            whitelist_text = 'NULL'
+            blacklist_text = 'NULL'
+
+        if not whitelist_text:
+            whitelist_text = 'NULL'
+        if not blacklist_text:
+            blacklist_text = 'NULL'
+
+        dispatcher.utter_message(f'hakuparametrit: {str(json.dumps(api_params.params))}, whitelist: {whitelist_text}, blacklist: {blacklist_text} ')
 
         try:
             api = ServiceRecommenderAPI()
@@ -357,8 +416,12 @@ class ShowServices(Action, ValidateSlots):
 
             if response.ok:
                 services = response.json()
-                ids = [service['service_id'] for service in services['recommended_services']]
-                names = [service['service_name'] for service in services['recommended_services']]
+                wh = WhiteBlackList(services)
+                resorted_services = wh.resort_by_match(white=whitelist_text, black=blacklist_text)
+                new_services = resorted_services
+
+                ids = [service['service_id'] for service in new_services['recommended_services']]
+                names = [service['service_name'] for service in new_services['recommended_services']]
 
                 if not ids:
                     dispatcher.utter_message(NO_SERVICES_MESSAGE)
@@ -377,7 +440,7 @@ class ShowServices(Action, ValidateSlots):
 
         return [SlotSet(RECOMMENDATIONS_SLOT, services)]
 
-class ShowServicesCarousel(Action, ValidateSlots):
+class ServiceCarouselByLifeSituation(Action, ValidateSlots):
     """
     Get service recommendations based on slot values collected by the bot.
     Tracker store slots must follow naming convention determined in
@@ -385,7 +448,7 @@ class ShowServicesCarousel(Action, ValidateSlots):
     """
 
     def name(self):
-        return 'action_show_services_carousel'
+        return 'action_service_carousel_by_life_situation'
 
     def run(self, dispatcher, tracker, domain):
         """
@@ -401,7 +464,12 @@ class ShowServicesCarousel(Action, ValidateSlots):
                               service_filters=self.validate_filters(tracker))
 
         # Enable if you want to display actual parameters sent to api!
-        # dispatcher.utter_message(f'hakuparametrit: {str(json.dumps(api_params.params))}')
+        try:
+            whitelist_text = tracker.get_slot(WHITELIST_SLOT)
+            blacklist_text = tracker.get_slot(BLACKLIST_SLOT)
+        except:
+            whitelist_text = 'NULL'
+            blacklist_text = 'NULL'
 
         try:
             api = ServiceRecommenderAPI()
@@ -411,8 +479,148 @@ class ShowServicesCarousel(Action, ValidateSlots):
 
             if response.ok:
                 services = response.json()
-                ids = [service['service_id'] for service in services['recommended_services']]
-                names = [service['service_name'] for service in services['recommended_services']]
+                wh = WhiteBlackList(services)
+                resorted_services = wh.resort_by_match(white=whitelist_text, black=blacklist_text)
+                new_services = resorted_services
+
+                ids = [service['service_id'] for service in new_services['recommended_services']]
+                names = [service['service_name'] for service in new_services['recommended_services']]
+
+                if not ids:
+                    dispatcher.utter_message(NO_SERVICES_MESSAGE)
+                else:
+                    dispatcher.utter_message('Palvelusuositukset:')
+
+                ct = CarouselTemplate()
+
+                for service_id, name in zip(ids, names):
+                    element = CarouselElement(service_id, name)
+                    ct.add_element(element)
+
+                dispatcher.utter_message(attachment=ct.template)
+            else:
+                dispatcher.utter_message(template=API_ERROR_MESSAGE)
+        except ConnectionError:
+            services = None
+            dispatcher.utter_message(template=API_ERROR_MESSAGE)
+
+        return [SlotSet(RECOMMENDATIONS_SLOT, services)]
+
+class ServiceListByTextSearch(Action, ValidateSlots):
+    """
+    Get service recommendations based on slot values collected by the bot.
+    Tracker store slots must follow naming convention determined in
+    LIFE_SITUATION_SLOTS dictionary to have an effect on recommendation.
+    """
+
+    def name(self):
+        return 'action_service_list_by_text_search'
+
+    def run(self, dispatcher, tracker, domain):
+        """
+        Fetches slot values from the bot tracker store, validates slot values,
+        and calls service recommender api to fetch recommended services based on
+        the features collected and for the location observed.
+        """
+
+        api_params = ApiParams()
+
+        api_params.add_params(limit=self.validate_result_limit(tracker),
+                              search_text=self.validate_search_text(tracker),
+                              service_filters=self.validate_filters(tracker))
+
+        # Enable if you want to display actual parameters sent to api!
+        try:
+            whitelist_text = tracker.get_slot(WHITELIST_SLOT)
+            blacklist_text = tracker.get_slot(BLACKLIST_SLOT)
+        except:
+            whitelist_text = 'NULL'
+            blacklist_text = 'NULL'
+
+        if not whitelist_text:
+            whitelist_text = 'NULL'
+        if not blacklist_text:
+            blacklist_text = 'NULL'
+
+        dispatcher.utter_message(f'hakuparametrit: {str(json.dumps(api_params.params))}, whitelist: {whitelist_text}, blacklist: {blacklist_text} ')
+
+        try:
+            api = ServiceRecommenderAPI()
+
+            response = api.get_recommendations(params=api_params.params,
+                                               method='text_search')
+
+            if response.ok:
+                services = response.json()
+                wh = WhiteBlackList(services)
+                resorted_services = wh.resort_by_match(white=whitelist_text, black=blacklist_text)
+                new_services = resorted_services
+
+                ids = [service['service_id'] for service in new_services['recommended_services']]
+                names = [service['service_name'] for service in new_services['recommended_services']]
+
+                if not ids:
+                    dispatcher.utter_message(NO_SERVICES_MESSAGE)
+                else:
+                    dispatcher.utter_message('Palvelusuositukset:')
+
+                for service_id, name in zip(ids, names):
+                    element = CarouselElement(service_id, name)
+                    dispatcher.utter_message(template=f'Palvelu: {name}',
+                                             buttons=element.element['buttons'])
+            else:
+                dispatcher.utter_message(template=API_ERROR_MESSAGE)
+        except ConnectionError:
+            services = None
+            dispatcher.utter_message(template=API_ERROR_MESSAGE)
+
+        return [SlotSet(RECOMMENDATIONS_SLOT, services)]
+
+class ServiceCarouselByLifeSituation(Action, ValidateSlots):
+    """
+    Get service recommendations based on slot values collected by the bot.
+    Tracker store slots must follow naming convention determined in
+    LIFE_SITUATION_SLOTS dictionary to have an effect on recommendation.
+    """
+
+    def name(self):
+        return 'action_service_carousel_by_text_search'
+
+    def run(self, dispatcher, tracker, domain):
+        """
+        Fetches slot values from the bot tracker store, validates slot values,
+        and calls service recommender api to fetch recommended services based on
+        the features collected and for the location observed.
+        """
+
+        api_params = ApiParams()
+
+        api_params.add_params(limit=self.validate_result_limit(tracker),
+                              search_text=self.validate_search_text(tracker),
+                              service_filters=self.validate_filters(tracker))
+
+        # Enable if you want to display actual parameters sent to api!
+        try:
+            whitelist_text = tracker.get_slot(WHITELIST_SLOT)
+            blacklist_text = tracker.get_slot(BLACKLIST_SLOT)
+        except:
+            whitelist_text = 'NULL'
+            blacklist_text = 'NULL'
+
+        try:
+            api = ServiceRecommenderAPI()
+
+            response = api.get_recommendations(params=api_params.params,
+                                               method='recommend_service')
+
+            if response.ok:
+                services = response.json()
+                wh = WhiteBlackList(services)
+                resorted_services = wh.resort_by_match(white=whitelist_text, black=blacklist_text)
+                new_services = resorted_services
+
+                ids = [service['service_id'] for service in new_services['recommended_services']]
+                names = [service['service_name'] for service in new_services['recommended_services']]
 
                 if not ids:
                     dispatcher.utter_message(NO_SERVICES_MESSAGE)
@@ -453,3 +661,4 @@ class ActionSlotReset(Action):
 
     def run(self, dispatcher, tracker, domain):
         return[AllSlotsReset()]
+
