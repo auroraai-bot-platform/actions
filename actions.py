@@ -576,7 +576,7 @@ class ServiceListByTextSearch(Action, ValidateSlots):
 
         return [SlotSet(RECOMMENDATIONS_SLOT, services)]
 
-class ServiceCarouselByLifeSituation(Action, ValidateSlots):
+class ServiceCarouselByTextSearch(Action, ValidateSlots):
     """
     Get service recommendations based on slot values collected by the bot.
     Tracker store slots must follow naming convention determined in
@@ -611,7 +611,7 @@ class ServiceCarouselByLifeSituation(Action, ValidateSlots):
             api = ServiceRecommenderAPI()
 
             response = api.get_recommendations(params=api_params.params,
-                                               method='recommend_service')
+                                               method='text_search')
 
             if response.ok:
                 services = response.json()
