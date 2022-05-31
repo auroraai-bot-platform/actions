@@ -8,8 +8,15 @@ on:
     tags:
     - '*'
 
+permissions:
+  id-token: write
+  contents: read
+
 env:
+  AWS_REGION: eu-north-1
   ECR_REPOSITORY: actions-private
+  ECR_REPOSITORY_TESTBOT: demo-actions-testbot
+  ECR_REPOSITORY_PALMU: demo-actions-palmu
   RASA_SDK_IMAGE: rasa/rasa-sdk:2.8.3
   # The commit SHA that triggered the workflow run
   IMAGE_TAG: ${{ github.sha }}
@@ -19,19 +26,19 @@ jobs:
     name: Build and push docker image
     runs-on: ubuntu-latest
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v1
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: eu-north-1
+      with: 
+        role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/automation-oidc-github
+        role-session-name: actions-build-and-deploy
+        aws-region: ${{ env.AWS_REGION }}
 
     - name: Login to Amazon ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
-    
-    - name: Checkout code
-      uses: actions/checkout@v2
     
     - name: Build, tag, and push image to Amazon ECR
       id: build-image
@@ -40,7 +47,13 @@ jobs:
       run: |
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f Dockerfile.production --build-arg RASA_SDK_IMAGE=$RASA_SDK_IMAGE .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_TESTBOT:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY_TESTBOT:$IMAGE_TAG
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_PALMU:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY_PALMU:$IMAGE_TAG
         echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+        echo "::set-output name=imagetestbot::$ECR_REGISTRY/$ECR_REPOSITORY_TESTBOT:$IMAGE_TAG"
+        echo "::set-output name=imagepalmu::$ECR_REGISTRY/$ECR_REPOSITORY_PALMU:$IMAGE_TAG"
 
     - name: Tag ECR image with latest as well
       run: |
@@ -62,7 +75,7 @@ jobs:
       with:
         task-definition: task-definition.json
         container-name: actions-testbot
-        image: ${{ steps.build-image.outputs.image }}
+        image: ${{ steps.build-image.outputs.imagetestbot }}
 
     - name: Deploy Amazon ECS task definition
       uses: aws-actions/amazon-ecs-deploy-task-definition@v1
@@ -82,7 +95,7 @@ jobs:
       with:
         task-definition: task-definition.json
         container-name: actions-palmu
-        image: ${{ steps.build-image.outputs.image }}
+        image: ${{ steps.build-image.outputs.imagepalmu }}
 
     - name: Deploy Amazon ECS task definition
       uses: aws-actions/amazon-ecs-deploy-task-definition@v1
