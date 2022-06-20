@@ -692,13 +692,13 @@ class ServiceDemo(Action, ValidateSlots):
 
         # parameters here are hard coded to get the wanted results for demo purposes
         params = {
-        'search_text': 'terveyden suojelu lain mukainen ilmoitus',
+        'search_text': 'terveyden suojelu laki ilmoitus kuopiossa',
         'service_filters': {
             'include_national_services': False,
             'municipality_codes': [code],
             'service_classes': ['http://uri.suomi.fi/codelist/ptv/ptvserclass2/code/P23']
             },   
-        'limit':int(9)
+        'limit':int(3)
         }
 
         # Enable if you want to display actual parameters sent to api!
@@ -719,13 +719,10 @@ class ServiceDemo(Action, ValidateSlots):
                 else:
                     dispatcher.utter_message('Palvelusuositukset:')
 
-                i = 0
                 for service_id, name in zip(ids, names):
                     element = CarouselElement(service_id, name)
                     dispatcher.utter_message(template=f'Palvelu: {name}',
                                             buttons=element.element['buttons'])
-                    i += 1
-                    if i == 3: break
             else:
                 dispatcher.utter_message(template=API_ERROR_MESSAGE)
                 dispatcher.utter_message(str(response))
@@ -735,3 +732,29 @@ class ServiceDemo(Action, ValidateSlots):
             dispatcher.utter_message(template=API_ERROR_MESSAGE)
 
         return[SlotSet(RECOMMENDATIONS_SLOT, services)]
+
+class HNRedirectAction(Action):
+    """
+    Determines whether the user is entitled to services in huolehtivat nuoret case
+    """
+
+    def name(self):
+        return 'action_hn_redirect'
+
+    def run(self, dispatcher, tracker, domain):
+        on_tampereella = tracker.get_slot('hn_asuu_tre_alue')
+        on_nuori = tracker.get_slot('hn_on_13_17v')
+        if on_tampereella and on_nuori:
+            hn_score = 0
+            if tracker.get_slot('hn_läheinen_pärjää'):
+                hn_score += 1
+            score_slots_text = ['hn_huolehtii', 'hn_vastuu', 'hn_huolen_vaikutus','hn_syyllisyys']
+            for slot in score_slots_text:
+                slot_value = str(tracker.get_slot(slot)).lower()
+                if slot_value == 'kyllä' or slot_value == 'toisinaan' or slot_value == 'jonkin verran':
+                    hn_score += 1
+            if hn_score >= 2:
+                dispatcher.utter_message(template="utter_hn_palvelun_piirissä")
+                return []
+        dispatcher.utter_message(template="utter_hn_ei_palvelun_piirissä")
+        return []
