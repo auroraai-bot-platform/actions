@@ -3,74 +3,32 @@ from rasa_sdk.executor import CollectingDispatcher
 from rasa_sdk.events import SlotSet, AllSlotsReset, Restarted
 from actions.servicerec.api import ServiceRecommenderAPI
 import json
-from actions.utils import MUNICIPALITY_CODES, REGION_CODES, HOSPITAL_DISTRICT_CODES, SERVICE_CLASS_CODES
-from actions.utils import CodeFilter
+from actions.utils import Filters
+from actions.utils import (
+    LIFE_SITUATION_SLOTS,
+    DEFAULT_LIFE_SITUATION_FEATURES,
+    DEFAULT_LIFE_SITUATION_METER_VALUES,
+    MIN_FEATURE_VALUE,
+    MAX_FEATURE_VALUE,
+    SEARCH_TEXT_SLOT,
+    DEFAULT_SEARCH_TEXT_VALUE,
+    INCLUDE_NATIONAL_SERVICES_SLOT,
+    INCLUDE_NATIONAL_SERVICES_DEFAULT_VALUE,
+    RESULT_LIMIT_SLOT,
+    DEFAULT_RESULT_LIMIT,
+    RERANK_SLOT,
+    DEFAULT_SESSION_ID,
+    API_FILTERS,
+    RECOMMENDATIONS_SLOT,
+    BUTTON_PRESSED_SLOT,
+    BUTTON_PRESSED_INTENT,
+    SHOW_API_CALL_PARAMETERS_SLOT,
+    WHITELIST_SLOT,
+    BLACKLIST_SLOT
+)
 
-WHITELIST_SLOT = 'sr_whitelist'
-BLACKLIST_SLOT = 'sr_blacklist'
+af = Filters().filters
 
-SEARCH_TEXT_SLOT = 'sr_param_search_text'
-DEFAULT_SEARCH_TEXT_VALUE = 'palvelu'
-
-RESULT_LIMIT_SLOT = 'sr_param_result_limit'
-DEFAULT_RESULT_LIMIT = 5
-
-MUNICIPALITY_SLOT = 'sr_filter_municipality'
-DEFAULT_MUNICIPALITY_CODE = None
-MunicipalityFilter = CodeFilter(MUNICIPALITY_CODES, MUNICIPALITY_SLOT, DEFAULT_MUNICIPALITY_CODE)
-
-REGION_SLOT = 'sr_filter_region'
-DEFAULT_REGION_CODE = None
-RegionFilter = CodeFilter(REGION_CODES, REGION_SLOT, DEFAULT_REGION_CODE)
-
-HOSPITAL_DISTRICT_SLOT = 'sr_filter_hospital_district'
-DEFAULT_HOSPITAL_DISTRICT_CODE = None
-HospitalDistrictFilter = CodeFilter(HOSPITAL_DISTRICT_CODES, HOSPITAL_DISTRICT_SLOT, DEFAULT_HOSPITAL_DISTRICT_CODE)
-
-SERVICE_CLASS_SLOT = 'sr_filter_service_class'
-DEFAULT_SERVICE_CLASS_CODE = None
-ServiceClassFilter = CodeFilter(SERVICE_CLASS_CODES, SERVICE_CLASS_SLOT, DEFAULT_SERVICE_CLASS_CODE, parameter_based_on='value')
-
-LIFE_SITUATION_SLOTS = {
-    'family': '3x10d_family',
-    'finance': '3x10d_finance',
-    'friends': '3x10d_friends',
-    'health': '3x10d_health',
-    'housing': '3x10d_housing',
-    'improvement_of_strengths': '3x10d_improvement_of_strengths',
-    'life_satisfaction': '3x10d_life_satisfaction',
-    'resilience': '3x10d_resilience',
-    'self_esteem': '3x10d_self_esteem',
-    'working_studying': '3x10d_working_studying'
-}
-
-DEFAULT_LIFE_SITUATION_FEATURES = None
-DEFAULT_LIFE_SITUATION_METER_VALUES = {
-    'family': [],
-    'finance': [],
-    'friends': [],
-    'health': [],
-    'housing': [],
-    'improvement_of_strengths': [],
-    'life_satisfaction': [],
-    'resilience': [],
-    'self_esteem': [],
-    'working_studying': []
-}
-
-DEFAULT_SESSION_ID = 'xyz-123'
-
-INCLUDE_NATIONAL_SERVICES_SLOT = 'sr_filter_include_national_services'
-INCLUDE_NATIONAL_SERVICES_DEFAULT_VALUE = None
-
-# AuroraApi service recommender excepts integer values between zero and ten for features.
-MIN_FEATURE_VALUE = 0
-MAX_FEATURE_VALUE = 10
-
-RECOMMENDATIONS_SLOT = 'sr_recommended_services'
-
-BUTTON_PRESSED_SLOT = 'sr_button_pressed'
-BUTTON_PRESSED_INTENT = 'sr.buttonpressed'
 
 # todo: Add responses for different languages.
 API_ERROR_MESSAGE = 'En valitettavasti pysty hakemaan palveluita juuri nyt.'
@@ -140,7 +98,9 @@ class ApiParams:
         """ Updates api parameters """
 
         for arg in kwargs:
-            if not kwargs[arg]:
+            if isinstance(kwargs[arg], bool):
+                self.params[arg] = kwargs[arg]
+            elif not kwargs[arg]:
                 continue
             else:
                 self.params[arg] = kwargs[arg]
@@ -163,10 +123,10 @@ class ApiFilters:
                 self.filters[arg] = kwargs[arg]
         return self.filters
 
-
 class ValidateSlots:
 
-    def validate_result_limit(self, tracker):
+    @staticmethod
+    def validate_result_limit(tracker):
         """
         Will check if result limit slot has a proper value. Otherwise default limit is used.
         """
@@ -176,7 +136,8 @@ class ValidateSlots:
             limit = DEFAULT_RESULT_LIMIT
         return limit
 
-    def validate_search_text(self, tracker):
+    @staticmethod
+    def validate_search_text(tracker):
         """
         Will check if search text slot has a value. Otherwise default value is used.
         """
@@ -186,7 +147,8 @@ class ValidateSlots:
             search_text = DEFAULT_SEARCH_TEXT_VALUE
         return search_text
 
-    def validate_feat(self, tracker):
+    @staticmethod
+    def validate_feat(tracker):
         """ Creates life situation feature vector by trying to fetch all slots
             values determined in LIFE_SITUATION_SLOTS. In case a feature slot has
             invalid value it has no effect on recommendations.
@@ -208,7 +170,8 @@ class ValidateSlots:
 
         return feats
 
-    def validate_list_slot(self, tracker, codefilter):
+    @staticmethod
+    def validate_list_slot(tracker, codefilter):
         """
         Check if list slot has a proper value which has corresponding
         code. Otherwise the slot value does not effective factor.
@@ -222,7 +185,8 @@ class ValidateSlots:
 
         return validated_slot_value
 
-    def validate_bool_slot(self, tracker, slot_name):
+    @staticmethod
+    def validate_bool_slot(tracker, slot_name):
         """
         Will check if boolean slot holds proper value. If not, filter is not used.
         """
@@ -241,11 +205,8 @@ class ValidateSlots:
                         return True
                     else:
                         return False
-            if isinstance(slot_value, int):
-                if slot_value == 1:
-                    return True
-                else:
-                    return False
+            if isinstance(slot_value, bool):
+                return slot_value
         except:
             return None
 
@@ -254,10 +215,12 @@ class ValidateSlots:
 
         api_filters.add_filters(
             include_national_services=self.validate_bool_slot(tracker, INCLUDE_NATIONAL_SERVICES_SLOT),
-            municipality_codes=self.validate_list_slot(tracker, MunicipalityFilter),
-            region_codes=self.validate_list_slot(tracker, RegionFilter),
-            hospital_district_codes=self.validate_list_slot(tracker, HospitalDistrictFilter),
-            service_classes=self.validate_list_slot(tracker, ServiceClassFilter)
+            municipality_codes=self.validate_list_slot(tracker, af['municipality_filter']),
+            region_codes=self.validate_list_slot(tracker, af['region_filter']),
+            hospital_district_codes=self.validate_list_slot(tracker, af['hospital_district_filter']),
+            service_classes=self.validate_list_slot(tracker, af['service_class_filter']),
+            target_groups=self.validate_list_slot(tracker, af['target_group_filter']),
+            service_collections=self.validate_list_slot(tracker, af['service_collection_filter'])
         )
 
         return api_filters.filters
@@ -392,12 +355,12 @@ class ServiceListByLifeSituation(Action, ValidateSlots):
         api_params = ApiParams()
 
         api_params.add_params(limit=self.validate_result_limit(tracker),
+                              rerank=ValidateSlots.validate_bool_slot(tracker, RERANK_SLOT),
                               life_situation_meters=self.validate_feat(tracker),
                               service_filters=self.validate_filters(tracker))
 
-
-        # Enable if you want to display actual parameters sent to api!
-        dispatcher.utter_message(f'hakuparametrit: {str(json.dumps(api_params.params))}')
+        if show_request_parameters(tracker, SHOW_API_CALL_PARAMETERS_SLOT):
+            dispatcher.utter_message(f'hakuparametrit: {str(json.dumps(api_params.params))}')
 
         try:
             api = ServiceRecommenderAPI()
@@ -450,11 +413,12 @@ class ServiceCarouselByLifeSituation(Action, ValidateSlots):
         api_params = ApiParams()
 
         api_params.add_params(limit=self.validate_result_limit(tracker),
+                              rerank=ValidateSlots.validate_bool_slot(tracker, RERANK_SLOT),
                               life_situation_meters=self.validate_feat(tracker),
                               service_filters=self.validate_filters(tracker))
 
-        # Enable if you want to display actual parameters sent to api!
-        dispatcher.utter_message(f'hakuparametrit: {str(json.dumps(api_params.params))}')
+        if show_request_parameters(tracker, SHOW_API_CALL_PARAMETERS_SLOT):
+            dispatcher.utter_message(f'hakuparametrit: {str(json.dumps(api_params.params))}')
 
         try:
             api = ServiceRecommenderAPI()
@@ -509,11 +473,12 @@ class ServiceListByTextSearch(Action, ValidateSlots):
         api_params = ApiParams()
 
         api_params.add_params(limit=self.validate_result_limit(tracker),
+                              rerank=ValidateSlots.validate_bool_slot(tracker, RERANK_SLOT),
                               search_text=self.validate_search_text(tracker),
                               service_filters=self.validate_filters(tracker))
 
-        # Enable if you want to display actual parameters sent to api!
-        dispatcher.utter_message(f'hakuparametrit: {str(json.dumps(api_params.params))}')
+        if show_request_parameters(tracker, SHOW_API_CALL_PARAMETERS_SLOT):
+            dispatcher.utter_message(f'hakuparametrit: {str(json.dumps(api_params.params))}')
 
         try:
             api = ServiceRecommenderAPI()
@@ -565,11 +530,12 @@ class ServiceCarouselByTextSearch(Action, ValidateSlots):
         api_params = ApiParams()
 
         api_params.add_params(limit=self.validate_result_limit(tracker),
+                              rerank=ValidateSlots.validate_bool_slot(tracker, RERANK_SLOT),
                               search_text=self.validate_search_text(tracker),
                               service_filters=self.validate_filters(tracker))
 
-        # Enable if you want to display actual parameters sent to api!
-        dispatcher.utter_message(f'hakuparametrit: {str(json.dumps(api_params.params))}')
+        if show_request_parameters(tracker, SHOW_API_CALL_PARAMETERS_SLOT):
+            dispatcher.utter_message(f'hakuparametrit: {str(json.dumps(api_params.params))}')
 
         try:
             api = ServiceRecommenderAPI()
@@ -623,7 +589,11 @@ class ActionSlotReset(Action):
     def run(self, dispatcher, tracker, domain):
         return[AllSlotsReset()]
 
-
+def show_request_parameters(tracker, slot):
+    slot_value = ValidateSlots.validate_bool_slot(tracker, slot)
+    if not slot_value:
+        return False
+    return slot_value
 """ -----------------------------------------------------------------------
     Down below actions are bot specific demos or use case specific actions
     rather than generic ones above. 
@@ -634,7 +604,6 @@ class ActionSlotReset(Action):
     - WhiteBlackListByTextSearchSort
     -----------------------------------------------------------------------
 """
-
 
 class ServiceDemo(Action, ValidateSlots):
     """
@@ -776,8 +745,8 @@ class WhiteBlackListByTextSearch(Action, ValidateSlots):
         api_params.params['whitelist'] = whitelist_text
         api_params.params['blacklist'] = blacklist_text
 
-        # Enable if you want to display actual parameters sent to api!
-        dispatcher.utter_message(f'hakuparametrit: {str(json.dumps(api_params.params))}')
+        if show_request_parameters(tracker, SHOW_API_CALL_PARAMETERS_SLOT):
+            dispatcher.utter_message(f'hakuparametrit: {str(json.dumps(api_params.params))}')
 
         try:
             api = ServiceRecommenderAPI()
@@ -811,7 +780,6 @@ class WhiteBlackListByTextSearch(Action, ValidateSlots):
         except ConnectionError:
             services = None
             dispatcher.utter_message(template=API_ERROR_MESSAGE)
-
 
 class WhiteBlackListByTextSearchSort(Action, ValidateSlots):
     """
@@ -850,8 +818,9 @@ class WhiteBlackListByTextSearchSort(Action, ValidateSlots):
             blacklist_text = 'NULL'
 
         # Enable if you want to display actual parameters sent to api!
-        dispatcher.utter_message(f'hakuparametrit: {str(json.dumps(api_params.params))}')
-        dispatcher.utter_message(f'tulosten sorttausparametrit: whitelist: {whitelist_text}, blacklist: {blacklist_text} ')
+        if show_request_parameters(tracker, SHOW_API_CALL_PARAMETERS_SLOT):
+            dispatcher.utter_message(f'hakuparametrit: {str(json.dumps(api_params.params))}')
+            dispatcher.utter_message(f'tulosten sorttausparametrit: whitelist: {whitelist_text}, blacklist: {blacklist_text} ')
 
         try:
             api = ServiceRecommenderAPI()
