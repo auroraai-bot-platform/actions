@@ -902,7 +902,7 @@ class FetchSessionAttributes(Action):
         """
 
         metadata = tracker.get_slot('session_started_metadata')
-        auroraai_access_token = metadata['auroraai_access_token']
+        auroraai_access_token = metadata['auroraaiAccessToken']
 
         attribute_params = {'access_token': str(auroraai_access_token)}
         session_attributes = SessionAttributesAPI()
