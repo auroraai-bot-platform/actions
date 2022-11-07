@@ -9,9 +9,10 @@ This repository hosts different custom actions which are deployed to auroraai -c
 
 ## Components
 
-`api.py` - Fetches data from Suomi.fi Finnish Service Catalogue REST API (requires correct API_KEY and CLIENT_ID)
-`utils.py` - List of municipalities and their respective codes in Finland
-`actions.py` - the actual actions which contain functions available to define in botfront and use in rasa conversations
+`api.py` - Methods used for connecting bot to the aurora REST API (requires correct API_KEY and CLIENT_ID)
+`classification_codes.py` - Dictionaries for codes in koodisto.fi used in aurora-ai api methods.
+`utils.py` - Defines fixed slot names, and contains custom action helpers.
+`actions.py` - Custom actions used in rasa conversations, and which can be called from botfront.
 
 ## Requirements
 
