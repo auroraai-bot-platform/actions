@@ -1,15 +1,22 @@
 from rasa_sdk import Action, Tracker
 from rasa_sdk.executor import CollectingDispatcher
 from rasa_sdk.events import SlotSet, AllSlotsReset, Restarted
-from actions.servicerec.api import ServiceRecommenderAPI
+from actions.servicerec.api import ServiceRecommenderAPI, SessionAttributesAPI
 import json
-from actions.utils import Filters
+from urllib.parse import urlparse, parse_qs, urlencode
+from actions.utils import Filters, find_municipality
 from actions.utils import (
     LIFE_SITUATION_SLOTS,
     DEFAULT_LIFE_SITUATION_FEATURES,
     DEFAULT_LIFE_SITUATION_METER_VALUES,
     MIN_FEATURE_VALUE,
     MAX_FEATURE_VALUE,
+    AGE_SLOT,
+    DEFAULT_AGE_VALUE,
+    MUNICIPALITY_SLOT,
+    DEFAULT_MUNICIPALITY_VALUE,
+    SESSION_TRANSFER_TARGET_SERVICE_SLOT,
+    DEFAULT_SESSION_TRANSFER_TARGET_SERVICE,
     SEARCH_TEXT_SLOT,
     DEFAULT_SEARCH_TEXT_VALUE,
     INCLUDE_NATIONAL_SERVICES_SLOT,
@@ -135,6 +142,33 @@ class ValidateSlots:
         except:
             limit = DEFAULT_RESULT_LIMIT
         return limit
+
+    @staticmethod
+    def validate_age(tracker):
+        """
+        Will check if age slot has a proper value.
+        """
+        try:
+            age = int(tracker.get_slot(AGE_SLOT))
+        except:
+            age = DEFAULT_AGE_VALUE
+        return age
+
+    @staticmethod
+    def validate_municipality(tracker):
+        """
+        Will check if municipality slot has a proper value, both
+        code or name of municipality is accepted. Note that
+        municipality filter slot is different and is validated by its
+        own class method as it may contain list of values.
+        """
+        try:
+            slot_content = tracker.get_slot(MUNICIPALITY_SLOT)
+            if isinstance(slot_content, str):
+                code = find_municipality(slot_content)
+        except:
+            code = DEFAULT_MUNICIPALITY_VALUE
+        return code
 
     @staticmethod
     def validate_search_text(tracker):
@@ -853,3 +887,108 @@ class WhiteBlackListByTextSearchSort(Action, ValidateSlots):
             dispatcher.utter_message(template=API_ERROR_MESSAGE)
 
         return [SlotSet(RECOMMENDATIONS_SLOT, services)]
+
+class FetchSessionAttributes(Action):
+    """
+    Get user related attributes after session transfer.
+    """
+
+    def name(self):
+        return 'action_fetch_session_attributes'
+
+    def run(self, dispatcher, tracker, domain):
+        """
+        Documentation
+        """
+
+        metadata = tracker.get_slot('session_started_metadata')
+        auroraai_access_token = metadata['auroraaiAccessToken']
+
+        attribute_params = {'access_token': str(auroraai_access_token)}
+        session_attributes = SessionAttributesAPI()
+        response = session_attributes.get_attributes(params=attribute_params)
+        attributes = response.json()
+
+        # Store all fetched data into slots (atm data can contain [age, municipality_code, life_situation_meters])
+
+        life_situation_meters = attributes["life_situation_meters"]
+
+        all_slots = []
+        for key in life_situation_meters.keys():
+            try:
+                slot_item = SlotSet(LIFE_SITUATION_SLOTS[key], str(life_situation_meters[key][0]))
+                all_slots.append(slot_item)
+            except:
+                pass
+
+        try:
+            all_slots.append(SlotSet(MUNICIPALITY_SLOT, str(attributes["municipality_code"])))
+        except:
+            pass
+
+        try:
+            all_slots.append(SlotSet(AGE_SLOT, str(attributes["age"])))
+        except:
+            pass
+
+        return all_slots
+
+class PostSessionAttributes(Action, ValidateSlots):
+    """
+    Post user related attributes before session transfer.
+    """
+
+    def name(self):
+        return 'action_post_session_attributes'
+
+    def run(self, dispatcher, tracker, domain):
+        """
+        Documentation
+        """
+
+        api_params = ApiParams()
+        attributes = ApiParams()
+
+        service_channel_id = tracker.get_slot(SESSION_TRANSFER_TARGET_SERVICE_SLOT)
+
+        attributes.add_params(age=self.validate_age(tracker),
+                              life_situation_meters=self.validate_feat(tracker),
+                              municipality_code=self.validate_municipality(tracker)
+                              )
+
+        api_params.add_params(service_channel_id=service_channel_id,
+                              session_attributes=attributes.params
+                              )
+
+        api_for_session = SessionAttributesAPI()
+
+        response = api_for_session.post_attributes(params=api_params.params)
+
+        URL = response.text
+
+        if response.ok:
+            parsed_url = urlparse(URL)
+            token_data = parse_qs(parsed_url.query)
+            access_token = token_data['auroraai_access_token'][0]
+
+        url_params = {'auroraai_access_token': access_token}
+
+        """ 
+        Here we need to hard code target service url for each service_channel_id 
+        which can be the target. For our demo, this means testbot and palmubot. 
+        In the future this uri (redirect link) will be part of service
+        recommendations.
+        """
+
+        # Todo: get the redirect link from service recommendation!
+
+        target_uris = {
+            'fc66cd13-ae36-4592-b18d-e095a8d9a481': 'https://palmu.demo.aaibot.link/',
+            'a24bd700-290a-41d8-b64a-8746ea20851b': 'https://testbot.demo.aaibot.link/'
+        }
+
+        link = target_uris[service_channel_id]
+        session_transfer_link = link + '?' + urlencode(url_params)
+        dispatcher.utter_message(session_transfer_link)
+
+        return [SlotSet('access_token', access_token)]

@@ -10,6 +10,7 @@ URL = os.getenv('AURORA_API_ENDPOINT')
 API_KEY = os.getenv('AURORA_API_KEY')
 CLIENT_ID = os.getenv('AURORA_API_CLIENT_ID')
 
+
 class ServiceRecommenderAPI():
     """
     Aurora AI Service Recommendation API class for fetching service recommendations
@@ -26,16 +27,16 @@ class ServiceRecommenderAPI():
     get_recommendations(params: dict)
         Returns service recommendations.
     """
-    
+
     def __init__(self):
 
         secret_string = f'{CLIENT_ID}:{API_KEY}'
         base64_secret = base64.b64encode(secret_string.encode('ascii'))
         secret = base64_secret.decode('ascii')
-    
+
         self.headers = {
-           'content-type': 'application/json',
-           'Authorization': 'Basic ' + secret
+            'content-type': 'application/json',
+            'Authorization': 'Basic ' + secret
         }
 
     def get_recommendations(self, params: dict, method: str) -> dict:
@@ -48,7 +49,7 @@ class ServiceRecommenderAPI():
             can be found from api documentation (see link in README.md).
         method : str
             defines endpoint used.
-            
+
         Raises
         ------
         ConnectionError
@@ -63,13 +64,36 @@ class ServiceRecommenderAPI():
 
         """
 
-        endpoint = URL+method
+        endpoint = URL + method
 
         try:
             output = requests.post(endpoint,
                                    json=params,
                                    headers=self.headers,
                                    timeout=10)
+
+        except requests.exceptions.RequestException as e:
+            raise ConnectionError(e)
+
+        return output
+
+
+class SessionAttributesAPI(ServiceRecommenderAPI):
+    def __init__(self):
+        super().__init__()
+
+        self.method = 'session_attributes'
+
+    def post_attributes(self, params: dict):
+        output = self.get_recommendations(params=params, method=self.method)
+        return output
+
+    def get_attributes(self, params: dict):
+
+        endpoint = URL + self.method
+
+        try:
+            output = requests.get(url=endpoint, params=params)
 
         except requests.exceptions.RequestException as e:
             raise ConnectionError(e)

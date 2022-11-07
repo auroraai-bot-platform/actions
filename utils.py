@@ -43,6 +43,15 @@ DEFAULT_LIFE_SITUATION_METER_VALUES = {
 MIN_FEATURE_VALUE = 0
 MAX_FEATURE_VALUE = 10
 
+AGE_SLOT = 'st_user_age'
+DEFAULT_AGE_VALUE = None
+
+MUNICIPALITY_SLOT = 'st_user_municipality'
+DEFAULT_MUNICIPALITY_VALUE = None
+
+SESSION_TRANSFER_TARGET_SERVICE_SLOT = 'st_target_service'
+DEFAULT_SESSION_TRANSFER_TARGET_SERVICE = None
+
 SEARCH_TEXT_SLOT = 'sr_param_search_text'
 DEFAULT_SEARCH_TEXT_VALUE = 'palvelu'
 
@@ -205,3 +214,12 @@ class Filters:
                                            default_value=API_FILTERS[key]['default_value'],
                                            validate_codes=API_FILTERS[key]['validate_codes'],
                                            use_value_over_key=API_FILTERS[key]['use_value_over_key'])
+
+def find_municipality(text: str):
+    """ Helper to find municipality by code or value """
+    if text in MUNICIPALITY_CODES.keys():
+        return text
+    else:
+        TEMP = dict((k, v.lower()) for k,v in MUNICIPALITY_CODES.items())
+        if text.lower() in TEMP.values():
+            return (list(TEMP.keys())[list(TEMP.values()).index(text.lower())])
