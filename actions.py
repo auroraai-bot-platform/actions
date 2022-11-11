@@ -14,6 +14,7 @@ from actions.utils import (
     AGE_SLOT,
     DEFAULT_AGE_VALUE,
     MUNICIPALITY_SLOT,
+    MUNICIPALITY_FILTER_SLOT,
     DEFAULT_MUNICIPALITY_VALUE,
     SESSION_TRANSFER_TARGET_SERVICE_SLOT,
     DEFAULT_SESSION_TRANSFER_TARGET_SERVICE,
@@ -923,6 +924,7 @@ class FetchSessionAttributes(Action):
 
         try:
             all_slots.append(SlotSet(MUNICIPALITY_SLOT, str(attributes["municipality_code"])))
+            all_slots.append(SlotSet(MUNICIPALITY_FILTER_SLOT, str(attributes["municipality_code"])))
         except:
             pass
 
